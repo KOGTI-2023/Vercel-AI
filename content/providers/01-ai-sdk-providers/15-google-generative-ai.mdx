@@ -12,7 +12,7 @@ the [Google Generative AI](https://ai.google.dev/api/rest) APIs.
 
 The Google provider is available in the `@ai-sdk/google` module. You can install it with
 
-<Tabs items={['pnpm', 'npm', 'yarn']}>
+<Tabs items={['pnpm', 'npm', 'yarn', 'bun']}>
   <Tab>
     <Snippet text="pnpm add @ai-sdk/google" dark />
   </Tab>
@@ -21,6 +21,10 @@ The Google provider is available in the `@ai-sdk/google` module. You can install
   </Tab>
   <Tab>
     <Snippet text="yarn add @ai-sdk/google" dark />
+  </Tab>
+
+  <Tab>
+    <Snippet text="bun add @ai-sdk/google" dark />
   </Tab>
 </Tabs>
 
@@ -106,7 +110,6 @@ await generateText({
           threshold: 'BLOCK_LOW_AND_ABOVE',
         },
       ],
-      responseModalities: ['TEXT', 'IMAGE'],
     },
   },
 });
@@ -169,6 +172,25 @@ The following optional provider options are available for Google Generative AI m
 
     Optional. If set to true, thought summaries are returned, which are synthisized versions of the model's raw thoughts and offer insights into the model's internal reasoning process.
 
+- **imageConfig** _\{ aspectRatio: string \}_
+
+  Optional. Configuration for the models image generation. Only supported by specific [Google Generative AI models](https://ai.google.dev/gemini-api/docs/image-generation).
+
+  - **aspectRatio** _string_
+
+  Model defaults to generate 1:1 squares, or to matching the output image size to that of your input image. Can be one of the following:
+
+  - 1:1
+  - 2:3
+  - 3:2
+  - 3:4
+  - 4:3
+  - 4:5
+  - 5:4
+  - 9:16
+  - 16:9
+  - 21:9
+
 ### Thinking
 
 The Gemini 2.5 series models use an internal "thinking process" that significantly improves their reasoning and multi-step planning abilities, making them highly effective for complex tasks such as coding, advanced mathematics, and data analysis. For more information see [Google Generative AI thinking documentation](https://ai.google.dev/gemini-api/docs/thinking).
@@ -228,10 +250,39 @@ const result = await generateText({
 });
 ```
 
+You can also use YouTube URLs directly:
+
+```ts
+import { google } from '@ai-sdk/google';
+import { generateText } from 'ai';
+
+const result = await generateText({
+  model: google('gemini-2.5-flash'),
+  messages: [
+    {
+      role: 'user',
+      content: [
+        {
+          type: 'text',
+          text: 'Summarize this video',
+        },
+        {
+          type: 'file',
+          data: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+          mediaType: 'video/mp4',
+        },
+      ],
+    },
+  ],
+});
+```
+
 <Note>
   The AI SDK will automatically download URLs if you pass them as data, except
-  for `https://generativelanguage.googleapis.com/v1beta/files/`. You can use the
-  Google Generative AI Files API to upload larger files to that location.
+  for `https://generativelanguage.googleapis.com/v1beta/files/` and YouTube
+  URLs. You can use the Google Generative AI Files API to upload larger files to
+  that location. YouTube URLs (public or unlisted videos) are supported directly
+  - you can specify one YouTube video URL per request.
 </Note>
 
 See [File Parts](/docs/foundations/prompts#file-parts) for details on how to use files in prompts.
@@ -548,24 +599,21 @@ const urlContextMetadata = metadata?.urlContextMetadata;
 
 ### Image Outputs
 
-The model `gemini-2.0-flash-preview-image-generation` supports image generation. Images are exposed as files in the response.
-You need to enable image output in the provider options using the `responseModalities` option.
+Gemini models with image generation capabilities (`gemini-2.5-flash-image-preview`) support image generation. Images are exposed as files in the response.
 
 ```ts
 import { google } from '@ai-sdk/google';
 import { generateText } from 'ai';
 
 const result = await generateText({
-  model: google('gemini-2.0-flash-preview-image-generation'),
-  providerOptions: {
-    google: { responseModalities: ['TEXT', 'IMAGE'] },
-  },
-  prompt: 'Generate an image of a comic cat',
+  model: google('gemini-2.5-flash-image-preview'),
+  prompt:
+    'Create a picture of a nano banana dish in a fancy restaurant with a Gemini theme',
 });
 
 for (const file of result.files) {
   if (file.mediaType.startsWith('image/')) {
-    // show the image
+    console.log('Generated image:', file);
   }
 }
 ```

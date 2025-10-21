@@ -1,14 +1,14 @@
 import {
   JSONObject,
-  LanguageModelV2,
-  LanguageModelV2CallWarning,
-  LanguageModelV2Content,
-  LanguageModelV2FinishReason,
-  LanguageModelV2Reasoning,
-  LanguageModelV2StreamPart,
-  LanguageModelV2Usage,
-  SharedV2ProviderMetadata,
-  LanguageModelV2FunctionTool,
+  LanguageModelV3,
+  LanguageModelV3CallWarning,
+  LanguageModelV3Content,
+  LanguageModelV3FinishReason,
+  LanguageModelV3Reasoning,
+  LanguageModelV3StreamPart,
+  LanguageModelV3Usage,
+  SharedV3ProviderMetadata,
+  LanguageModelV3FunctionTool,
 } from '@ai-sdk/provider';
 import {
   FetchFunction,
@@ -44,8 +44,8 @@ type BedrockChatConfig = {
   generateId: () => string;
 };
 
-export class BedrockChatLanguageModel implements LanguageModelV2 {
-  readonly specificationVersion = 'v2';
+export class BedrockChatLanguageModel implements LanguageModelV3 {
+  readonly specificationVersion = 'v3';
   readonly provider = 'amazon-bedrock';
 
   constructor(
@@ -67,9 +67,9 @@ export class BedrockChatLanguageModel implements LanguageModelV2 {
     tools,
     toolChoice,
     providerOptions,
-  }: Parameters<LanguageModelV2['doGenerate']>[0]): Promise<{
+  }: Parameters<LanguageModelV3['doGenerate']>[0]): Promise<{
     command: BedrockConverseInput;
-    warnings: LanguageModelV2CallWarning[];
+    warnings: LanguageModelV3CallWarning[];
     usesJsonResponseTool: boolean;
     betas: Set<string>;
   }> {
@@ -81,7 +81,7 @@ export class BedrockChatLanguageModel implements LanguageModelV2 {
         schema: bedrockProviderOptions,
       })) ?? {};
 
-    const warnings: LanguageModelV2CallWarning[] = [];
+    const warnings: LanguageModelV3CallWarning[] = [];
 
     if (frequencyPenalty != null) {
       warnings.push({
@@ -101,13 +101,6 @@ export class BedrockChatLanguageModel implements LanguageModelV2 {
       warnings.push({
         type: 'unsupported-setting',
         setting: 'seed',
-      });
-    }
-
-    if (topK != null) {
-      warnings.push({
-        type: 'unsupported-setting',
-        setting: 'topK',
       });
     }
 
@@ -134,7 +127,7 @@ export class BedrockChatLanguageModel implements LanguageModelV2 {
       }
     }
 
-    const jsonResponseTool: LanguageModelV2FunctionTool | undefined =
+    const jsonResponseTool: LanguageModelV3FunctionTool | undefined =
       responseFormat?.type === 'json' && responseFormat.schema != null
         ? {
             type: 'function',
@@ -144,14 +137,15 @@ export class BedrockChatLanguageModel implements LanguageModelV2 {
           }
         : undefined;
 
-    const { toolConfig, additionalTools, toolWarnings, betas } = prepareTools({
-      tools: jsonResponseTool ? [jsonResponseTool, ...(tools ?? [])] : tools,
-      toolChoice:
-        jsonResponseTool != null
-          ? { type: 'tool', toolName: jsonResponseTool.name }
-          : toolChoice,
-      modelId: this.modelId,
-    });
+    const { toolConfig, additionalTools, toolWarnings, betas } =
+      await prepareTools({
+        tools: jsonResponseTool ? [jsonResponseTool, ...(tools ?? [])] : tools,
+        toolChoice:
+          jsonResponseTool != null
+            ? { type: 'tool', toolName: jsonResponseTool.name }
+            : toolChoice,
+        modelId: this.modelId,
+      });
 
     warnings.push(...toolWarnings);
 
@@ -166,18 +160,19 @@ export class BedrockChatLanguageModel implements LanguageModelV2 {
     const thinkingBudget = bedrockOptions.reasoningConfig?.budgetTokens;
 
     const inferenceConfig = {
-      ...(maxOutputTokens != null && { maxOutputTokens }),
+      ...(maxOutputTokens != null && { maxTokens: maxOutputTokens }),
       ...(temperature != null && { temperature }),
       ...(topP != null && { topP }),
+      ...(topK != null && { topK }),
       ...(stopSequences != null && { stopSequences }),
     };
 
-    // Adjust maxOutputTokens if thinking is enabled
+    // Adjust maxTokens if thinking is enabled
     if (isThinking && thinkingBudget != null) {
-      if (inferenceConfig.maxOutputTokens != null) {
-        inferenceConfig.maxOutputTokens += thinkingBudget;
+      if (inferenceConfig.maxTokens != null) {
+        inferenceConfig.maxTokens += thinkingBudget;
       } else {
-        inferenceConfig.maxOutputTokens = thinkingBudget + 4096; // Default + thinking budget maxOutputTokens = 4096, TODO update default in v5
+        inferenceConfig.maxTokens = thinkingBudget + 4096; // Default + thinking budget maxTokens = 4096, TODO update default in v5
       }
       // Add them to additional model request fields
       // Add thinking config to additionalModelRequestFields
@@ -207,6 +202,15 @@ export class BedrockChatLanguageModel implements LanguageModelV2 {
         type: 'unsupported-setting',
         setting: 'topP',
         details: 'topP is not supported when thinking is enabled',
+      });
+    }
+
+    if (isThinking && inferenceConfig.topK != null) {
+      delete inferenceConfig.topK;
+      warnings.push({
+        type: 'unsupported-setting',
+        setting: 'topK',
+        details: 'topK is not supported when thinking is enabled',
       });
     }
 
@@ -254,8 +258,11 @@ export class BedrockChatLanguageModel implements LanguageModelV2 {
       await convertToBedrockChatMessages(filteredPrompt);
 
     // Filter out reasoningConfig from providerOptions.bedrock to prevent sending it to Bedrock API
-    const { reasoningConfig: _, ...filteredBedrockOptions } =
-      providerOptions?.bedrock || {};
+    const {
+      reasoningConfig: _,
+      additionalModelRequestFields: __,
+      ...filteredBedrockOptions
+    } = providerOptions?.bedrock || {};
 
     return {
       command: {
@@ -296,8 +303,8 @@ export class BedrockChatLanguageModel implements LanguageModelV2 {
   }
 
   async doGenerate(
-    options: Parameters<LanguageModelV2['doGenerate']>[0],
-  ): Promise<Awaited<ReturnType<LanguageModelV2['doGenerate']>>> {
+    options: Parameters<LanguageModelV3['doGenerate']>[0],
+  ): Promise<Awaited<ReturnType<LanguageModelV3['doGenerate']>>> {
     const {
       command: args,
       warnings,
@@ -321,7 +328,7 @@ export class BedrockChatLanguageModel implements LanguageModelV2 {
       fetch: this.config.fetch,
     });
 
-    const content: Array<LanguageModelV2Content> = [];
+    const content: Array<LanguageModelV3Content> = [];
 
     // map response content to content array
     for (const part of response.output.message.content) {
@@ -337,7 +344,7 @@ export class BedrockChatLanguageModel implements LanguageModelV2 {
       // reasoning
       if (part.reasoningContent) {
         if ('reasoningText' in part.reasoningContent) {
-          const reasoning: LanguageModelV2Reasoning = {
+          const reasoning: LanguageModelV3Reasoning = {
             type: 'reasoning',
             text: part.reasoningContent.reasoningText.text,
           };
@@ -424,8 +431,8 @@ export class BedrockChatLanguageModel implements LanguageModelV2 {
   }
 
   async doStream(
-    options: Parameters<LanguageModelV2['doStream']>[0],
-  ): Promise<Awaited<ReturnType<LanguageModelV2['doStream']>>> {
+    options: Parameters<LanguageModelV3['doStream']>[0],
+  ): Promise<Awaited<ReturnType<LanguageModelV3['doStream']>>> {
     const {
       command: args,
       warnings,
@@ -448,13 +455,13 @@ export class BedrockChatLanguageModel implements LanguageModelV2 {
       fetch: this.config.fetch,
     });
 
-    let finishReason: LanguageModelV2FinishReason = 'unknown';
-    const usage: LanguageModelV2Usage = {
+    let finishReason: LanguageModelV3FinishReason = 'unknown';
+    const usage: LanguageModelV3Usage = {
       inputTokens: undefined,
       outputTokens: undefined,
       totalTokens: undefined,
     };
-    let providerMetadata: SharedV2ProviderMetadata | undefined = undefined;
+    let providerMetadata: SharedV3ProviderMetadata | undefined = undefined;
 
     const contentBlocks: Record<
       number,
@@ -471,7 +478,7 @@ export class BedrockChatLanguageModel implements LanguageModelV2 {
       stream: response.pipeThrough(
         new TransformStream<
           ParseResult<z.infer<typeof BedrockStreamSchema>>,
-          LanguageModelV2StreamPart
+          LanguageModelV3StreamPart
         >({
           start(controller) {
             controller.enqueue({ type: 'stream-start', warnings });

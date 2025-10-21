@@ -1,14 +1,15 @@
-import { ProviderOptions } from '@ai-sdk/provider-utils';
-import { prepareRetries } from '../util/prepare-retries';
-import { UnsupportedModelVersionError } from '../error/unsupported-model-version-error';
+import { ProviderOptions, withUserAgentSuffix } from '@ai-sdk/provider-utils';
+import { resolveEmbeddingModel } from '../model/resolve-model';
 import { assembleOperationName } from '../telemetry/assemble-operation-name';
 import { getBaseTelemetryAttributes } from '../telemetry/get-base-telemetry-attributes';
 import { getTracer } from '../telemetry/get-tracer';
 import { recordSpan } from '../telemetry/record-span';
 import { selectTelemetryAttributes } from '../telemetry/select-telemetry-attributes';
 import { TelemetrySettings } from '../telemetry/telemetry-settings';
-import { EmbeddingModel, ProviderMetadata } from '../types';
+import { EmbeddingModel } from '../types';
+import { prepareRetries } from '../util/prepare-retries';
 import { EmbedResult } from './embed-result';
+import { VERSION } from '../version';
 
 /**
 Embed a value using an embedding model. The type of the value is defined by the embedding model.
@@ -22,8 +23,8 @@ Embed a value using an embedding model. The type of the value is defined by the 
 
 @returns A result object that contains the embedding, the value, and additional information.
  */
-export async function embed<VALUE>({
-  model,
+export async function embed<VALUE = string>({
+  model: modelArg,
   value,
   providerOptions,
   maxRetries: maxRetriesArg,
@@ -71,23 +72,22 @@ Only applicable for HTTP-based providers.
    */
   experimental_telemetry?: TelemetrySettings;
 }): Promise<EmbedResult<VALUE>> {
-  if (model.specificationVersion !== 'v2') {
-    throw new UnsupportedModelVersionError({
-      version: model.specificationVersion,
-      provider: model.provider,
-      modelId: model.modelId,
-    });
-  }
+  const model = resolveEmbeddingModel<VALUE>(modelArg);
 
   const { maxRetries, retry } = prepareRetries({
     maxRetries: maxRetriesArg,
     abortSignal,
   });
 
+  const headersWithUserAgent = withUserAgentSuffix(
+    headers ?? {},
+    `ai/${VERSION}`,
+  );
+
   const baseTelemetryAttributes = getBaseTelemetryAttributes({
-    model,
+    model: model,
     telemetry,
-    headers,
+    headers: headersWithUserAgent,
     settings: { maxRetries },
   });
 
@@ -126,7 +126,7 @@ Only applicable for HTTP-based providers.
             const modelResponse = await model.doEmbed({
               values: [value],
               abortSignal,
-              headers,
+              headers: headersWithUserAgent,
               providerOptions,
             });
 
@@ -134,7 +134,7 @@ Only applicable for HTTP-based providers.
             const usage = modelResponse.usage ?? { tokens: NaN };
 
             doEmbedSpan.setAttributes(
-              selectTelemetryAttributes({
+              await selectTelemetryAttributes({
                 telemetry,
                 attributes: {
                   'ai.embeddings': {
@@ -159,7 +159,7 @@ Only applicable for HTTP-based providers.
       );
 
       span.setAttributes(
-        selectTelemetryAttributes({
+        await selectTelemetryAttributes({
           telemetry,
           attributes: {
             'ai.embedding': { output: () => JSON.stringify(embedding) },

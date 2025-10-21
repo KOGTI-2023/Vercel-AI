@@ -1,11 +1,9 @@
 import type {
-  LanguageModelV2Prompt,
-  LanguageModelV2FilePart,
+  LanguageModelV3Prompt,
+  LanguageModelV3FilePart,
 } from '@ai-sdk/provider';
-import {
-  convertReadableStreamToArray,
-  createTestServer,
-} from '@ai-sdk/provider-utils/test';
+import { createTestServer } from '@ai-sdk/test-server/with-vitest';
+import { convertReadableStreamToArray } from '@ai-sdk/provider-utils/test';
 import { GatewayLanguageModel } from './gateway-language-model';
 import type { GatewayConfig } from './gateway-config';
 import {
@@ -16,8 +14,9 @@ import {
   GatewayModelNotFoundError,
   GatewayResponseError,
 } from './errors';
+import { describe, it, expect, vi } from 'vitest';
 
-const TEST_PROMPT: LanguageModelV2Prompt = [
+const TEST_PROMPT: LanguageModelV3Prompt = [
   { role: 'user', content: [{ type: 'text', text: 'Hello' }] },
 ];
 
@@ -49,7 +48,7 @@ describe('GatewayLanguageModel', () => {
       const model = createTestModel();
       expect(model.modelId).toBe('test-model');
       expect(model.provider).toBe('test-provider');
-      expect(model.specificationVersion).toBe('v2');
+      expect(model.specificationVersion).toBe('v3');
     });
   });
 
@@ -214,7 +213,8 @@ describe('GatewayLanguageModel', () => {
       } catch (error) {
         expect(GatewayAuthenticationError.isInstance(error)).toBe(true);
         const authError = error as GatewayAuthenticationError;
-        expect(authError.message).toContain('Invalid API key provided');
+        expect(authError.message).toContain('Invalid API key');
+        expect(authError.message).toContain('vercel.com/d?to=');
         expect(authError.statusCode).toBe(401);
         expect(authError.type).toBe('authentication_error');
       }
@@ -310,7 +310,7 @@ describe('GatewayLanguageModel', () => {
         prepareJsonResponse({ content: { type: 'text', text: 'response' } });
         const imageBytes = new Uint8Array([1, 2, 3, 4]);
         const expectedBase64 = Buffer.from(imageBytes).toString('base64');
-        const imagePrompt: LanguageModelV2Prompt = [
+        const imagePrompt: LanguageModelV3Prompt = [
           {
             role: 'user',
             content: [
@@ -326,7 +326,7 @@ describe('GatewayLanguageModel', () => {
 
         const requestBody = await server.calls[0].requestBodyJson;
         const imagePart = requestBody.prompt[0]
-          .content[1] as LanguageModelV2FilePart;
+          .content[1] as LanguageModelV3FilePart;
 
         expect(imagePart.type).toBe('file');
         expect(imagePart.data).toBe(`data:image/jpeg;base64,${expectedBase64}`);
@@ -338,7 +338,7 @@ describe('GatewayLanguageModel', () => {
         const imageBytes = new Uint8Array([5, 6, 7, 8]);
         const expectedBase64 = Buffer.from(imageBytes).toString('base64');
         const mimeType = 'image/png';
-        const imagePrompt: LanguageModelV2Prompt = [
+        const imagePrompt: LanguageModelV3Prompt = [
           {
             role: 'user',
             content: [{ type: 'file', data: imageBytes, mediaType: mimeType }],
@@ -351,7 +351,7 @@ describe('GatewayLanguageModel', () => {
 
         const requestBody = await server.calls[0].requestBodyJson;
         const imagePart = requestBody.prompt[0]
-          .content[0] as LanguageModelV2FilePart;
+          .content[0] as LanguageModelV3FilePart;
 
         expect(imagePart.type).toBe('file');
         expect(imagePart.data).toBe(
@@ -363,7 +363,7 @@ describe('GatewayLanguageModel', () => {
       it('should not modify image part with URL', async () => {
         prepareJsonResponse({ content: { type: 'text', text: 'response' } });
         const imageUrl = new URL('https://example.com/image.jpg');
-        const imagePrompt: LanguageModelV2Prompt = [
+        const imagePrompt: LanguageModelV3Prompt = [
           {
             role: 'user',
             content: [
@@ -379,7 +379,7 @@ describe('GatewayLanguageModel', () => {
 
         const requestBody = await server.calls[0].requestBodyJson;
         const imagePart = requestBody.prompt[0]
-          .content[1] as LanguageModelV2FilePart;
+          .content[1] as LanguageModelV3FilePart;
 
         expect(imagePart.type).toBe('file');
         expect(imagePart.data).toBe(imageUrl.toString());
@@ -390,7 +390,7 @@ describe('GatewayLanguageModel', () => {
         const imageBytes = new Uint8Array([1, 2, 3, 4]);
         const expectedBase64 = Buffer.from(imageBytes).toString('base64');
         const imageUrl = new URL('https://example.com/image2.png');
-        const imagePrompt: LanguageModelV2Prompt = [
+        const imagePrompt: LanguageModelV3Prompt = [
           {
             role: 'user',
             content: [
@@ -756,7 +756,8 @@ describe('GatewayLanguageModel', () => {
       } catch (error) {
         expect(GatewayAuthenticationError.isInstance(error)).toBe(true);
         const authError = error as GatewayAuthenticationError;
-        expect(authError.message).toContain('Invalid API key provided');
+        expect(authError.message).toContain('Invalid API key');
+        expect(authError.message).toContain('vercel.com/d?to=');
         expect(authError.statusCode).toBe(401);
         expect(authError.type).toBe('authentication_error');
       }
@@ -825,7 +826,7 @@ describe('GatewayLanguageModel', () => {
         prepareStreamResponse({ content: ['response'] });
         const imageBytes = new Uint8Array([1, 2, 3, 4]);
         const expectedBase64 = Buffer.from(imageBytes).toString('base64');
-        const imagePrompt: LanguageModelV2Prompt = [
+        const imagePrompt: LanguageModelV3Prompt = [
           {
             role: 'user',
             content: [
@@ -842,7 +843,7 @@ describe('GatewayLanguageModel', () => {
 
         const requestBody = await server.calls[0].requestBodyJson;
         const imagePart = requestBody.prompt[0]
-          .content[1] as LanguageModelV2FilePart;
+          .content[1] as LanguageModelV3FilePart;
 
         expect(imagePart.type).toBe('file');
         expect(imagePart.data).toBe(`data:image/jpeg;base64,${expectedBase64}`);
@@ -854,7 +855,7 @@ describe('GatewayLanguageModel', () => {
         const imageBytes = new Uint8Array([5, 6, 7, 8]);
         const expectedBase64 = Buffer.from(imageBytes).toString('base64');
         const mimeType = 'image/png';
-        const imagePrompt: LanguageModelV2Prompt = [
+        const imagePrompt: LanguageModelV3Prompt = [
           {
             role: 'user',
             content: [
@@ -871,7 +872,7 @@ describe('GatewayLanguageModel', () => {
 
         const requestBody = await server.calls[0].requestBodyJson;
         const imagePart = requestBody.prompt[0]
-          .content[1] as LanguageModelV2FilePart;
+          .content[1] as LanguageModelV3FilePart;
 
         expect(imagePart.type).toBe('file');
         expect(imagePart.data).toBe(
@@ -883,7 +884,7 @@ describe('GatewayLanguageModel', () => {
       it('should not modify image part with URL', async () => {
         prepareStreamResponse({ content: ['response'] });
         const imageUrl = new URL('https://example.com/image.jpg');
-        const imagePrompt: LanguageModelV2Prompt = [
+        const imagePrompt: LanguageModelV3Prompt = [
           {
             role: 'user',
             content: [
@@ -900,7 +901,7 @@ describe('GatewayLanguageModel', () => {
 
         const requestBody = await server.calls[0].requestBodyJson;
         const imagePart = requestBody.prompt[0]
-          .content[1] as LanguageModelV2FilePart;
+          .content[1] as LanguageModelV3FilePart;
 
         expect(imagePart.type).toBe('file');
         expect(imagePart.data).toBe(imageUrl.toString());
@@ -912,7 +913,7 @@ describe('GatewayLanguageModel', () => {
         const imageBytes = new Uint8Array([1, 2, 3, 4]);
         const expectedBase64 = Buffer.from(imageBytes).toString('base64');
         const imageUrl = new URL('https://example.com/image2.png');
-        const imagePrompt: LanguageModelV2Prompt = [
+        const imagePrompt: LanguageModelV3Prompt = [
           {
             role: 'user',
             content: [

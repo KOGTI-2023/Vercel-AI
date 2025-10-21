@@ -3,6 +3,15 @@ import { MCPClientError } from '../../error/mcp-client-error';
 import { createMCPClient } from './mcp-client';
 import { MockMCPTransport } from './mock-mcp-transport';
 import { CallToolResult } from './types';
+import {
+  beforeEach,
+  afterEach,
+  describe,
+  expect,
+  expectTypeOf,
+  it,
+  vi,
+} from 'vitest';
 
 const createMockTransport = vi.fn(config => new MockMCPTransport(config));
 
@@ -114,7 +123,9 @@ describe('MCPClient', () => {
       },
     );
 
-    expectTypeOf<typeof result>().toEqualTypeOf<CallToolResult>();
+    expectTypeOf<
+      Exclude<typeof result, AsyncIterable<any>>
+    >().toEqualTypeOf<CallToolResult>();
   });
 
   it('should not return user-defined tool if it is nonexistent', async () => {
@@ -153,6 +164,51 @@ describe('MCPClient', () => {
     await expect(
       toolCall({ bar: 'bar' }, { messages: [], toolCallId: '1' }),
     ).rejects.toThrow(MCPClientError);
+  });
+
+  it('should include JSON-RPC error data in MCPClientError', async () => {
+    createMockTransport.mockImplementation(
+      () =>
+        new MockMCPTransport({
+          failOnInvalidToolParams: true,
+        }),
+    );
+    client = await createMCPClient({
+      transport: { type: 'sse', url: 'https://example.com/sse' },
+    });
+    const tools = await client.tools({
+      schemas: {
+        'mock-tool': {
+          inputSchema: z.object({ bar: z.string() }),
+        },
+      },
+    });
+    const toolCall = tools['mock-tool'].execute;
+
+    try {
+      await toolCall({ bar: 'bar' }, { messages: [], toolCallId: '1' });
+      throw new Error('Expected error to be thrown');
+    } catch (error) {
+      expect(MCPClientError.isInstance(error)).toBe(true);
+      if (MCPClientError.isInstance(error)) {
+        expect(error.code).toBe(-32602);
+        expect(error.data).toMatchInlineSnapshot(`
+          {
+            "expectedSchema": {
+              "properties": {
+                "foo": {
+                  "type": "string",
+                },
+              },
+              "type": "object",
+            },
+            "receivedArguments": {
+              "bar": "bar",
+            },
+          }
+        `);
+      }
+    }
   });
 
   it('should throw if the server does not support any tools', async () => {
@@ -281,7 +337,9 @@ describe('MCPClient', () => {
       },
     );
 
-    expectTypeOf<typeof result>().toEqualTypeOf<CallToolResult>();
+    expectTypeOf<
+      Exclude<typeof result, AsyncIterable<any>>
+    >().toEqualTypeOf<CallToolResult>();
   });
 
   it('should throw if transport is missing required methods', async () => {
